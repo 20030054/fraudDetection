@@ -20,7 +20,6 @@ else:
 
 # Function to generate synthetic transactions
 def generate_synthetic_transaction():
-    """Generates a synthetic transaction for real-time testing."""
     cities = ['Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Peshawar', 'Quetta']
     merchant_categories = ['Electronics', 'Travel', 'Jewelry', 'Online Services', 'Groceries', 'Retail', 'Utilities', 'Healthcare']
     devices = ['Mobile', 'Desktop']
@@ -39,18 +38,14 @@ def generate_synthetic_transaction():
 
 # Function to preprocess the transaction for the model
 def preprocess_transaction(transaction):
-    """Preprocesses the transaction data for the model."""
     try:
-        # Encode categorical features
         transaction['user_home_city'] = label_encoders['user_home_city'].transform([transaction['user_home_city']])[0]
         transaction['transaction_city'] = label_encoders['transaction_city'].transform([transaction['transaction_city']])[0]
         transaction['merchant_category'] = label_encoders['merchant_category'].transform([transaction['merchant_category']])[0]
         transaction['device_type'] = label_encoders['device_type'].transform([transaction['device_type']])[0]
         
-        # Hash IP address
         transaction['ip_address'] = hash(transaction['ip_address']) % 10**6
         
-        # Convert to DataFrame
         df = pd.DataFrame([transaction])
         return df[['user_avg_amount', 'transaction_amount', 'user_home_city', 'transaction_city', 'merchant_category', 'device_type', 'ip_address']]
     
@@ -86,68 +81,77 @@ fraud_chart_placeholder = st.empty()
 st.header("📈 Transaction Trends")
 trends_chart_placeholder = st.empty()
 
+# Additional Insights
+st.header("📊 Additional Insights")
+fraud_trend_placeholder = st.empty()
+category_distribution_placeholder = st.empty()
+amount_comparison_placeholder = st.empty()
+
 # Simulate real-time transactions
 while True:
-    # Generate a synthetic transaction
     transaction = generate_synthetic_transaction()
-    
-    # Preprocess the transaction
     processed_transaction = preprocess_transaction(transaction)
     
     if processed_transaction is not None:
-        # Predict fraud
         is_fraud = model.predict(processed_transaction)[0]
-
-        # Reduce fraud occurrences to ~10%
         if is_fraud == 1:
-            is_fraud = np.random.choice([0, 1], p=[0.9, 0.1])  # 90% legitimate, 10% fraud
+            is_fraud = np.random.choice([0, 1], p=[0.9, 0.1])  # Reduce fraud cases
         
         transaction['is_fraud'] = is_fraud
-
-        # Add transaction to session state
         st.session_state.transactions = pd.concat([st.session_state.transactions, pd.DataFrame([transaction])], ignore_index=True)
-
-        # Keep only the latest N transactions
+        
         if len(st.session_state.transactions) > num_transactions:
             st.session_state.transactions = st.session_state.transactions.iloc[-num_transactions:]
 
-        # Display real-time transaction feed
         with placeholder.container():
             st.write("### 🔄 Latest Transactions")
             st.dataframe(st.session_state.transactions.tail(10))
 
-        # Update fraud distribution chart
+        # Fraud distribution pie chart
         with fraud_chart_placeholder.container():
             st.write("### 📊 Fraud Distribution")
-
             if not st.session_state.transactions.empty:
                 fraud_counts = st.session_state.transactions['is_fraud'].value_counts()
-
-                # Dynamically generate labels based on available fraud categories
                 labels = fraud_counts.index.map(lambda x: "Legitimate" if x == 0 else "Fraud").tolist()
-
-                # Define colors dynamically based on available labels
                 colors = ['green' if label == "Legitimate" else 'red' for label in labels]
-
                 fig, ax = plt.subplots()
                 ax.pie(fraud_counts, labels=labels, autopct='%1.1f%%', colors=colors)
                 st.pyplot(fig)
-            else:
-                st.write("No transactions available for fraud distribution.")
 
-        # Update transaction trends chart
+        # Transaction trend line chart
         with trends_chart_placeholder.container():
             st.write("### 📉 Transaction Trends")
-
             if not st.session_state.transactions.empty:
                 fig, ax = plt.subplots()
-                ax.plot(st.session_state.transactions['transaction_amount'], label='Transaction Amount', marker='o')
+                ax.plot(st.session_state.transactions.index, st.session_state.transactions['transaction_amount'], marker='o', label='Transaction Amount')
                 ax.set_xlabel("Transaction Index")
                 ax.set_ylabel("Amount (PKR)")
                 ax.legend()
                 st.pyplot(fig)
-            else:
-                st.write("No transactions available for trend analysis.")
 
-    # Wait for the specified interval before generating the next transaction
+        # Fraud trend over time
+        with fraud_trend_placeholder.container():
+            st.write("### 📊 Fraud Over Time")
+            fraud_counts = st.session_state.transactions.groupby(st.session_state.transactions.index)['is_fraud'].sum()
+            fig, ax = plt.subplots()
+            ax.bar(fraud_counts.index, fraud_counts.values, color='red', label="Fraudulent Transactions")
+            ax.set_xlabel("Transaction Index")
+            ax.set_ylabel("Fraud Count")
+            ax.legend()
+            st.pyplot(fig)
+
+        # Fraud vs. Legitimate per category
+        with category_distribution_placeholder.container():
+            st.write("### 🏪 Fraud by Merchant Category")
+            category_counts = st.session_state.transactions.groupby(['merchant_category', 'is_fraud']).size().unstack(fill_value=0)
+            category_counts.plot(kind='bar', stacked=True, figsize=(10, 5))
+            st.pyplot()
+
+        # Fraud vs. Legitimate Transaction Amounts
+        with amount_comparison_placeholder.container():
+            st.write("### 💰 Average Transaction Amount (Fraud vs. Legitimate)")
+            avg_amounts = st.session_state.transactions.groupby('is_fraud')['transaction_amount'].mean()
+            avg_amounts.plot(kind='bar', color=['green', 'red'])
+            st.pyplot()
+
     time.sleep(update_interval)
