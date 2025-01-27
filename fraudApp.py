@@ -3,10 +3,16 @@ import pandas as pd
 import numpy as np
 import joblib
 import time
+import random
+import plotly.express as px
 from datetime import datetime
 
 # Load the trained model
 model = joblib.load("random_forest.pkl")  # Change to any other model you want to use
+
+# Function to generate realistic IP addresses
+def generate_ip():
+    return f"{random.randint(1, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 255)}"
 
 # Function to generate synthetic transaction data
 def generate_transaction():
@@ -16,7 +22,7 @@ def generate_transaction():
     transaction_city = np.random.choice(["Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad"])
     merchant_category = np.random.choice(["Groceries", "Electronics", "Travel", "Dining", "Healthcare", "Clothing"])
     device_type = np.random.choice(["Mobile", "Desktop"])
-    ip_address = hash(str(np.random.randint(1, 255))) % 10**6
+    ip_address = generate_ip()
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
     return {
@@ -31,18 +37,24 @@ def generate_transaction():
     }
 
 # Streamlit UI
-st.title("Real-Time Credit Card Fraud Detection")
+st.set_page_config(page_title="Real-Time Fraud Detection Dashboard", layout="wide")
+st.title("💳 Real-Time Credit Card Fraud Detection Dashboard")
 
-st.sidebar.header("Settings")
+st.sidebar.header("⚙️ Settings")
 simulation_speed = st.sidebar.slider("Transaction Generation Speed (seconds)", 1, 10, 3)
 
 data_placeholder = st.empty()
 
+total_transactions = 0
+fraudulent_transactions = 0
 transactions = []
+
+col1, col2 = st.columns(2)
 
 while True:
     transaction = generate_transaction()
     transactions.append(transaction)
+    total_transactions += 1
     
     # Convert transaction to DataFrame for prediction
     df = pd.DataFrame([transaction])
@@ -55,10 +67,35 @@ while True:
     
     # Make prediction
     prediction = model.predict(df)[0]
-    transaction["fraudulent"] = "Yes" if prediction == 1 else "No"
+    is_fraud = "Yes" if prediction == 1 else "No"
+    transaction["fraudulent"] = is_fraud
+    if prediction == 1:
+        fraudulent_transactions += 1
     
     # Display transactions
     transactions_df = pd.DataFrame(transactions)
     data_placeholder.dataframe(transactions_df)
+    
+    with col1:
+        st.metric("📊 Total Transactions", total_transactions)
+    with col2:
+        st.metric("⚠️ Fraudulent Transactions", fraudulent_transactions)
+    
+    # Visualization
+    st.subheader("📈 Transaction Trends")
+    if len(transactions) > 10:
+        fig = px.line(transactions_df, x="timestamp", y="transaction_amount", color="fraudulent", title="Transaction Amount Over Time")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    st.subheader("🌍 Transaction Locations")
+    city_counts = transactions_df["transaction_city"].value_counts().reset_index()
+    city_counts.columns = ["City", "Count"]
+    fig2 = px.bar(city_counts, x="City", y="Count", title="Number of Transactions per City", color="City")
+    st.plotly_chart(fig2, use_container_width=True)
+    
+    st.subheader("📡 Fraud Distribution by Device Type")
+    fraud_device_counts = transactions_df.groupby("device_type")["fraudulent"].value_counts().unstack().fillna(0)
+    fig3 = px.bar(fraud_device_counts, barmode="stack", title="Fraud Cases by Device Type")
+    st.plotly_chart(fig3, use_container_width=True)
     
     time.sleep(simulation_speed)
