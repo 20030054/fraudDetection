@@ -8,6 +8,9 @@ import plotly.express as px
 import os
 from datetime import datetime
 
+# Streamlit UI (Ensure set_page_config is the first Streamlit command)
+st.set_page_config(page_title="Real-Time Fraud Detection Dashboard", layout="wide")
+
 # Load the trained model
 model = joblib.load("random_forest.pkl")  # Change to any other model you want to use
 
@@ -45,8 +48,6 @@ def generate_transaction():
         "timestamp": timestamp
     }
 
-# Streamlit UI
-st.set_page_config(page_title="Real-Time Fraud Detection Dashboard", layout="wide")
 st.title("💳 Real-Time Credit Card Fraud Detection Dashboard")
 
 st.sidebar.header("⚙️ Settings")
