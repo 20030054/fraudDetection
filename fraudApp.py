@@ -5,11 +5,19 @@ import joblib
 import time
 import random
 import plotly.express as px
+import os
 from datetime import datetime
 
-# Load the trained model and scaler
+# Load the trained model
 model = joblib.load("random_forest.pkl")  # Change to any other model you want to use
-scaler = joblib.load("scaler.pkl")  # Ensure the same scaler used during training is applied
+
+# Check if scaler file exists
+scaler_path = "scaler.pkl"
+if os.path.exists(scaler_path):
+    scaler = joblib.load(scaler_path)
+else:
+    st.warning("⚠️ Warning: `scaler.pkl` not found. Using default settings.")
+    scaler = None  # Allow model to work without scaling
 
 # Function to generate realistic IP addresses
 def generate_ip():
@@ -69,8 +77,11 @@ while True:
     # Ensure numeric columns are in the correct format
     df = df.astype(float)
     
-    # Scale input data
-    df_scaled = scaler.transform(df)
+    # Scale input data if scaler is available
+    if scaler:
+        df_scaled = scaler.transform(df)
+    else:
+        df_scaled = df  # Use raw data if scaler is missing
     
     # Make prediction
     prediction = model.predict(df_scaled)[0]
