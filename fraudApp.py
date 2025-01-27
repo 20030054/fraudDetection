@@ -3,118 +3,122 @@ import pandas as pd
 import numpy as np
 import joblib
 import time
-import random
-import plotly.express as px
-import os
-from datetime import datetime
+import matplotlib.pyplot as plt
 
-# Streamlit UI (Ensure set_page_config is the first Streamlit command)
-st.set_page_config(page_title="Real-Time Fraud Detection Dashboard", layout="wide")
+# Load the pre-trained Random Forest model
+model = joblib.load("random_forest.pkl")
 
-# Load the trained model
-model = joblib.load("random_forest.pkl")  # Change to any other model you want to use
-
-# Check if scaler file exists
-scaler_path = "scaler.pkl"
-if os.path.exists(scaler_path):
-    scaler = joblib.load(scaler_path)
-else:
-    st.warning("⚠️ Warning: `scaler.pkl` not found. Using default settings.")
-    scaler = None  # Allow model to work without scaling
-
-# Function to generate realistic IP addresses
-def generate_ip():
-    return f"{random.randint(1, 255)}.{random.randint(0, 255)}.{random.randint(0, 255)}.{random.randint(1, 255)}"
-
-# Function to generate synthetic transaction data
-def generate_transaction():
-    user_avg_amount = np.random.uniform(1000, 50000)
-    transaction_amount = np.random.uniform(500, 100000)
-    user_home_city = np.random.choice(["Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad"])
-    transaction_city = np.random.choice(["Karachi", "Lahore", "Islamabad", "Rawalpindi", "Faisalabad"])
-    merchant_category = np.random.choice(["Groceries", "Electronics", "Travel", "Dining", "Healthcare", "Clothing"])
-    device_type = np.random.choice(["Mobile", "Desktop"])
-    ip_address = generate_ip()
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+# Function to generate synthetic transactions
+def generate_synthetic_transaction():
+    """
+    Generates a synthetic transaction for real-time testing.
+    """
+    cities = ['Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Peshawar', 'Quetta']
+    merchant_categories = ['Electronics', 'Travel', 'Jewelry', 'Online Services', 'Groceries', 'Retail', 'Utilities', 'Healthcare']
+    devices = ['Mobile', 'Desktop']
     
-    return {
-        "user_avg_amount": user_avg_amount,
-        "transaction_amount": transaction_amount,
-        "user_home_city": user_home_city,
-        "transaction_city": transaction_city,
-        "merchant_category": merchant_category,
-        "device_type": device_type,
-        "ip_address": ip_address,
-        "timestamp": timestamp
+    transaction = {
+        'user_id': np.random.randint(1000, 9999),
+        'user_avg_amount': np.random.normal(5000, 1500),
+        'transaction_amount': np.random.uniform(100, 50000),
+        'user_home_city': np.random.choice(cities),
+        'transaction_city': np.random.choice(cities),
+        'merchant_category': np.random.choice(merchant_categories),
+        'device_type': np.random.choice(devices),
+        'ip_address': f"{np.random.randint(1, 255)}.{np.random.randint(1, 255)}.{np.random.randint(1, 255)}.{np.random.randint(1, 255)}"
     }
+    return transaction
 
-st.title("💳 Real-Time Credit Card Fraud Detection Dashboard")
-
-st.sidebar.header("⚙️ Settings")
-simulation_speed = st.sidebar.slider("Transaction Generation Speed (seconds)", 1, 10, 3)
-
-data_placeholder = st.empty()
-
-total_transactions = 0
-fraudulent_transactions = 0
-transactions = []
-
-col1, col2 = st.columns(2)
-
-while True:
-    transaction = generate_transaction()
-    transactions.append(transaction)
-    total_transactions += 1
+# Function to preprocess the transaction for the model
+def preprocess_transaction(transaction):
+    """
+    Preprocesses the transaction data for the model.
+    """
+    # Encode categorical features
+    transaction['user_home_city'] = label_encoders['user_home_city'].transform([transaction['user_home_city']])[0]
+    transaction['transaction_city'] = label_encoders['transaction_city'].transform([transaction['transaction_city']])[0]
+    transaction['merchant_category'] = label_encoders['merchant_category'].transform([transaction['merchant_category']])[0]
+    transaction['device_type'] = label_encoders['device_type'].transform([transaction['device_type']])[0]
     
-    # Convert transaction to DataFrame for prediction
+    # Hash IP address
+    transaction['ip_address'] = hash(transaction['ip_address']) % 10**6
+    
+    # Convert to DataFrame
     df = pd.DataFrame([transaction])
-    df = df.drop(columns=["timestamp"])  # Timestamp is not needed for model prediction
+    return df[['user_avg_amount', 'transaction_amount', 'user_home_city', 'transaction_city', 'merchant_category', 'device_type', 'ip_address']]
+
+# Load label encoders (from training)
+label_encoders = joblib.load("label_encoders.pkl")  # Save label encoders during training
+
+# Streamlit app
+st.title("Real-Time Fraud Detection Dashboard")
+st.write("This dashboard simulates real-time credit card transactions and detects fraud using a pre-trained Random Forest model.")
+
+# Initialize session state for storing transactions
+if 'transactions' not in st.session_state:
+    st.session_state.transactions = pd.DataFrame(columns=[
+        'user_id', 'user_avg_amount', 'transaction_amount', 'user_home_city', 
+        'transaction_city', 'merchant_category', 'device_type', 'ip_address', 'is_fraud'
+    ])
+
+# Sidebar for controls
+st.sidebar.header("Controls")
+update_interval = st.sidebar.slider("Update Interval (seconds)", 1, 10, 2)
+num_transactions = st.sidebar.slider("Number of Transactions to Display", 10, 100, 20)
+
+# Real-time transaction feed
+st.header("Real-Time Transaction Feed")
+placeholder = st.empty()
+
+# Fraud distribution chart
+st.header("Fraud Distribution")
+fraud_chart_placeholder = st.empty()
+
+# Transaction trends chart
+st.header("Transaction Trends")
+trends_chart_placeholder = st.empty()
+
+# Simulate real-time transactions
+while True:
+    # Generate a synthetic transaction
+    transaction = generate_synthetic_transaction()
     
-    # Preprocess categorical data (ensure encoding matches training)
-    categorical_cols = ['user_home_city', 'transaction_city', 'merchant_category', 'device_type']
-    for col in categorical_cols:
-        df[col] = df[col].astype("category").cat.codes  # Convert to category codes
+    # Preprocess the transaction
+    processed_transaction = preprocess_transaction(transaction)
     
-    # Ensure numeric columns are in the correct format
-    df = df.astype(float)
+    # Predict fraud
+    is_fraud = model.predict(processed_transaction)[0]
+    transaction['is_fraud'] = is_fraud
     
-    # Scale input data if scaler is available
-    if scaler:
-        df_scaled = scaler.transform(df)
-    else:
-        df_scaled = df  # Use raw data if scaler is missing
+    # Add transaction to session state
+    st.session_state.transactions = pd.concat([st.session_state.transactions, pd.DataFrame([transaction])], ignore_index=True)
     
-    # Make prediction
-    prediction = model.predict(df_scaled)[0]
-    is_fraud = "Yes" if prediction == 1 else "No"
-    transaction["fraudulent"] = is_fraud
-    if prediction == 1:
-        fraudulent_transactions += 1
+    # Keep only the latest N transactions
+    if len(st.session_state.transactions) > num_transactions:
+        st.session_state.transactions = st.session_state.transactions.iloc[-num_transactions:]
     
-    # Display transactions
-    transactions_df = pd.DataFrame(transactions)
-    data_placeholder.dataframe(transactions_df)
+    # Display real-time transaction feed
+    with placeholder.container():
+        st.write("### Latest Transactions")
+        st.dataframe(st.session_state.transactions.tail(10))
     
-    with col1:
-        st.metric("📊 Total Transactions", total_transactions)
-    with col2:
-        st.metric("⚠️ Fraudulent Transactions", fraudulent_transactions)
+    # Update fraud distribution chart
+    with fraud_chart_placeholder.container():
+        st.write("### Fraud Distribution")
+        fraud_counts = st.session_state.transactions['is_fraud'].value_counts()
+        fig, ax = plt.subplots()
+        ax.pie(fraud_counts, labels=['Legitimate', 'Fraud'], autopct='%1.1f%%', colors=['green', 'red'])
+        st.pyplot(fig)
     
-    # Visualization
-    st.subheader("📈 Transaction Trends")
-    if len(transactions) > 10:
-        fig = px.line(transactions_df, x="timestamp", y="transaction_amount", color="fraudulent", title="Transaction Amount Over Time")
-        st.plotly_chart(fig, use_container_width=True)
+    # Update transaction trends chart
+    with trends_chart_placeholder.container():
+        st.write("### Transaction Trends")
+        fig, ax = plt.subplots()
+        ax.plot(st.session_state.transactions['transaction_amount'], label='Transaction Amount')
+        ax.set_xlabel("Transaction Index")
+        ax.set_ylabel("Amount (PKR)")
+        ax.legend()
+        st.pyplot(fig)
     
-    st.subheader("🌍 Transaction Locations")
-    city_counts = transactions_df["transaction_city"].value_counts().reset_index()
-    city_counts.columns = ["City", "Count"]
-    fig2 = px.bar(city_counts, x="City", y="Count", title="Number of Transactions per City", color="City")
-    st.plotly_chart(fig2, use_container_width=True)
-    
-    st.subheader("📡 Fraud Distribution by Device Type")
-    fraud_device_counts = transactions_df.groupby("device_type")["fraudulent"].value_counts().unstack().fillna(0)
-    fig3 = px.bar(fraud_device_counts, barmode="stack", title="Fraud Cases by Device Type")
-    st.plotly_chart(fig3, use_container_width=True)
-    
-    time.sleep(simulation_speed)
+    # Wait for the specified interval
+    time.sleep(update_interval)
