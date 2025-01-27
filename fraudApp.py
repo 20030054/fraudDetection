@@ -68,6 +68,9 @@ st.sidebar.header("⚙️ Controls")
 update_interval = st.sidebar.slider("⏳ Update Interval (seconds)", 1, 10, 2)
 num_transactions = st.sidebar.slider("📊 Number of Transactions to Display", 10, 100, 20)
 
+# 🚨 High-Risk Alerts Section
+st.sidebar.header("🚨 Fraud Alerts")
+
 # Real-time transaction feed
 st.header("📌 Real-Time Transaction Feed")
 placeholder = st.empty()
@@ -80,11 +83,8 @@ fraud_chart_placeholder = st.empty()
 st.header("📈 Transaction Trends")
 trends_chart_placeholder = st.empty()
 
-# Additional Insights
-st.header("📊 Additional Insights")
-fraud_trend_placeholder = st.empty()
-category_distribution_placeholder = st.empty()
-amount_comparison_placeholder = st.empty()
+# Fraud Alerts Placeholder
+fraud_alert_placeholder = st.sidebar.empty()
 
 # Simulate real-time transactions
 while True:
@@ -93,14 +93,20 @@ while True:
     
     if processed_transaction is not None:
         is_fraud = model.predict(processed_transaction)[0]
+        
+        # 🚨 Reduce fraud cases, but highlight them properly
         if is_fraud == 1:
             is_fraud = np.random.choice([0, 1], p=[0.9, 0.1])  # Reduce fraud cases
-        
+
         transaction['is_fraud'] = is_fraud
         st.session_state.transactions = pd.concat([st.session_state.transactions, pd.DataFrame([transaction])], ignore_index=True)
         
         if len(st.session_state.transactions) > num_transactions:
             st.session_state.transactions = st.session_state.transactions.iloc[-num_transactions:]
+
+        # 🚨 Display alerts for fraudulent transactions
+        if is_fraud == 1:
+            fraud_alert_placeholder.warning(f"🚨 HIGH-RISK ALERT: Fraudulent transaction detected!\n💳 User ID: {transaction['user_id']} | Amount: PKR {transaction['transaction_amount']:.2f}")
 
         with placeholder.container():
             st.write("### 🔄 Latest Transactions")
@@ -128,35 +134,5 @@ while True:
                 ax.set_ylabel("Amount (PKR)")
                 ax.legend()
                 st.pyplot(fig)
-
-        # Fraud trend over time
-        with fraud_trend_placeholder.container():
-            st.write("### 📊 Fraud Over Time")
-            fraud_counts = st.session_state.transactions.groupby(st.session_state.transactions.index)['is_fraud'].sum()
-            
-            fig, ax = plt.subplots()
-            ax.bar(fraud_counts.index, fraud_counts.values, color='red', label="Fraudulent Transactions")
-            ax.set_xlabel("Transaction Index")
-            ax.set_ylabel("Fraud Count")
-            ax.legend()
-            st.pyplot(fig)
-
-        # Fraud vs. Legitimate per category
-        with category_distribution_placeholder.container():
-            st.write("### 🏪 Fraud by Merchant Category")
-            category_counts = st.session_state.transactions.groupby(['merchant_category', 'is_fraud']).size().unstack(fill_value=0)
-            
-            fig, ax = plt.subplots(figsize=(10, 5))
-            category_counts.plot(kind='bar', stacked=True, ax=ax)
-            st.pyplot(fig)
-
-        # Fraud vs. Legitimate Transaction Amounts
-        with amount_comparison_placeholder.container():
-            st.write("### 💰 Average Transaction Amount (Fraud vs. Legitimate)")
-            avg_amounts = st.session_state.transactions.groupby('is_fraud')['transaction_amount'].mean()
-            
-            fig, ax = plt.subplots()
-            avg_amounts.plot(kind='bar', color=['green', 'red'], ax=ax)
-            st.pyplot(fig)
 
     time.sleep(update_interval)
