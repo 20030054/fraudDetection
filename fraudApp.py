@@ -7,8 +7,9 @@ import random
 import plotly.express as px
 from datetime import datetime
 
-# Load the trained model
+# Load the trained model and scaler
 model = joblib.load("random_forest.pkl")  # Change to any other model you want to use
+scaler = joblib.load("scaler.pkl")  # Ensure the same scaler used during training is applied
 
 # Function to generate realistic IP addresses
 def generate_ip():
@@ -60,13 +61,19 @@ while True:
     df = pd.DataFrame([transaction])
     df = df.drop(columns=["timestamp"])  # Timestamp is not needed for model prediction
     
-    # Preprocess categorical data (same as in training script)
+    # Preprocess categorical data (ensure encoding matches training)
     categorical_cols = ['user_home_city', 'transaction_city', 'merchant_category', 'device_type']
     for col in categorical_cols:
-        df[col] = df[col].astype("category").cat.codes
+        df[col] = df[col].astype("category").cat.codes  # Convert to category codes
+    
+    # Ensure numeric columns are in the correct format
+    df = df.astype(float)
+    
+    # Scale input data
+    df_scaled = scaler.transform(df)
     
     # Make prediction
-    prediction = model.predict(df)[0]
+    prediction = model.predict(df_scaled)[0]
     is_fraud = "Yes" if prediction == 1 else "No"
     transaction["fraudulent"] = is_fraud
     if prediction == 1:
