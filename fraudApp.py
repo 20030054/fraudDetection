@@ -7,22 +7,20 @@ import matplotlib.pyplot as plt
 import os
 
 # Load the pre-trained Random Forest model
-model_path = "random_forest.pkl"
-encoders_path = "label_encoders.pkl"
+MODEL_PATH = "random_forest.pkl"
+ENCODERS_PATH = "label_encoders.pkl"
 
 # Ensure model and encoders exist before loading
-if os.path.exists(model_path) and os.path.exists(encoders_path):
-    model = joblib.load(model_path)
-    label_encoders = joblib.load(encoders_path)
+if os.path.exists(MODEL_PATH) and os.path.exists(ENCODERS_PATH):
+    model = joblib.load(MODEL_PATH)
+    label_encoders = joblib.load(ENCODERS_PATH)
 else:
-    st.error("Model or label encoders file not found! Please check the file paths.")
+    st.error("🚨 Model or label encoders file not found! Please check the file paths.")
     st.stop()
 
 # Function to generate synthetic transactions
 def generate_synthetic_transaction():
-    """
-    Generates a synthetic transaction for real-time testing.
-    """
+    """Generates a synthetic transaction for real-time testing."""
     cities = ['Karachi', 'Lahore', 'Islamabad', 'Rawalpindi', 'Faisalabad', 'Peshawar', 'Quetta']
     merchant_categories = ['Electronics', 'Travel', 'Jewelry', 'Online Services', 'Groceries', 'Retail', 'Utilities', 'Healthcare']
     devices = ['Mobile', 'Desktop']
@@ -41,9 +39,7 @@ def generate_synthetic_transaction():
 
 # Function to preprocess the transaction for the model
 def preprocess_transaction(transaction):
-    """
-    Preprocesses the transaction data for the model.
-    """
+    """Preprocesses the transaction data for the model."""
     try:
         # Encode categorical features
         transaction['user_home_city'] = label_encoders['user_home_city'].transform([transaction['user_home_city']])[0]
@@ -59,7 +55,7 @@ def preprocess_transaction(transaction):
         return df[['user_avg_amount', 'transaction_amount', 'user_home_city', 'transaction_city', 'merchant_category', 'device_type', 'ip_address']]
     
     except Exception as e:
-        st.error(f"Error in preprocessing transaction: {e}")
+        st.error(f"⚠️ Error in preprocessing transaction: {e}")
         return None
 
 # Streamlit app title
@@ -101,6 +97,11 @@ while True:
     if processed_transaction is not None:
         # Predict fraud
         is_fraud = model.predict(processed_transaction)[0]
+
+        # Reduce fraud occurrences to ~10%
+        if is_fraud == 1:
+            is_fraud = np.random.choice([0, 1], p=[0.9, 0.1])  # 90% legitimate, 10% fraud
+        
         transaction['is_fraud'] = is_fraud
 
         # Add transaction to session state
@@ -118,15 +119,18 @@ while True:
         # Update fraud distribution chart
         with fraud_chart_placeholder.container():
             st.write("### 📊 Fraud Distribution")
-            
+
             if not st.session_state.transactions.empty:
                 fraud_counts = st.session_state.transactions['is_fraud'].value_counts()
-                
-                # Dynamically generate labels based on available fraud classes
-                labels = fraud_counts.index.map(lambda x: "Legitimate" if x == 0 else "Fraud")
-                
+
+                # Dynamically generate labels based on available fraud categories
+                labels = fraud_counts.index.map(lambda x: "Legitimate" if x == 0 else "Fraud").tolist()
+
+                # Define colors dynamically based on available labels
+                colors = ['green' if label == "Legitimate" else 'red' for label in labels]
+
                 fig, ax = plt.subplots()
-                ax.pie(fraud_counts, labels=labels, autopct='%1.1f%%', colors=['green', 'red'])
+                ax.pie(fraud_counts, labels=labels, autopct='%1.1f%%', colors=colors)
                 st.pyplot(fig)
             else:
                 st.write("No transactions available for fraud distribution.")
@@ -134,7 +138,7 @@ while True:
         # Update transaction trends chart
         with trends_chart_placeholder.container():
             st.write("### 📉 Transaction Trends")
-            
+
             if not st.session_state.transactions.empty:
                 fig, ax = plt.subplots()
                 ax.plot(st.session_state.transactions['transaction_amount'], label='Transaction Amount', marker='o')
