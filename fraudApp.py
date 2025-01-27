@@ -10,7 +10,6 @@ import os
 MODEL_PATH = "random_forest.pkl"
 ENCODERS_PATH = "label_encoders.pkl"
 
-# Ensure model and encoders exist before loading
 if os.path.exists(MODEL_PATH) and os.path.exists(ENCODERS_PATH):
     model = joblib.load(MODEL_PATH)
     label_encoders = joblib.load(ENCODERS_PATH)
@@ -64,7 +63,7 @@ if 'transactions' not in st.session_state:
         'transaction_city', 'merchant_category', 'device_type', 'ip_address', 'is_fraud'
     ])
 
-# Sidebar for user controls
+# Sidebar controls
 st.sidebar.header("⚙️ Controls")
 update_interval = st.sidebar.slider("⏳ Update Interval (seconds)", 1, 10, 2)
 num_transactions = st.sidebar.slider("📊 Number of Transactions to Display", 10, 100, 20)
@@ -114,6 +113,7 @@ while True:
                 fraud_counts = st.session_state.transactions['is_fraud'].value_counts()
                 labels = fraud_counts.index.map(lambda x: "Legitimate" if x == 0 else "Fraud").tolist()
                 colors = ['green' if label == "Legitimate" else 'red' for label in labels]
+                
                 fig, ax = plt.subplots()
                 ax.pie(fraud_counts, labels=labels, autopct='%1.1f%%', colors=colors)
                 st.pyplot(fig)
@@ -133,6 +133,7 @@ while True:
         with fraud_trend_placeholder.container():
             st.write("### 📊 Fraud Over Time")
             fraud_counts = st.session_state.transactions.groupby(st.session_state.transactions.index)['is_fraud'].sum()
+            
             fig, ax = plt.subplots()
             ax.bar(fraud_counts.index, fraud_counts.values, color='red', label="Fraudulent Transactions")
             ax.set_xlabel("Transaction Index")
@@ -144,14 +145,18 @@ while True:
         with category_distribution_placeholder.container():
             st.write("### 🏪 Fraud by Merchant Category")
             category_counts = st.session_state.transactions.groupby(['merchant_category', 'is_fraud']).size().unstack(fill_value=0)
-            category_counts.plot(kind='bar', stacked=True, figsize=(10, 5))
-            st.pyplot()
+            
+            fig, ax = plt.subplots(figsize=(10, 5))
+            category_counts.plot(kind='bar', stacked=True, ax=ax)
+            st.pyplot(fig)
 
         # Fraud vs. Legitimate Transaction Amounts
         with amount_comparison_placeholder.container():
             st.write("### 💰 Average Transaction Amount (Fraud vs. Legitimate)")
             avg_amounts = st.session_state.transactions.groupby('is_fraud')['transaction_amount'].mean()
-            avg_amounts.plot(kind='bar', color=['green', 'red'])
-            st.pyplot()
+            
+            fig, ax = plt.subplots()
+            avg_amounts.plot(kind='bar', color=['green', 'red'], ax=ax)
+            st.pyplot(fig)
 
     time.sleep(update_interval)
