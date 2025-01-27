@@ -54,22 +54,25 @@ def preprocess_transaction(transaction):
 
 # Streamlit app title
 st.title("💳 Real-Time Fraud Detection Dashboard")
-st.write("This dashboard simulates real-time credit card transactions and detects fraud using a pre-trained Random Forest model.")
 
-# Initialize session state for storing transactions
+# Initialize session state
 if 'transactions' not in st.session_state:
     st.session_state.transactions = pd.DataFrame(columns=[
         'user_id', 'user_avg_amount', 'transaction_amount', 'user_home_city', 
         'transaction_city', 'merchant_category', 'device_type', 'ip_address', 'is_fraud'
     ])
 
+if 'fraud_alerts' not in st.session_state:
+    st.session_state.fraud_alerts = []  # Stores last 5 fraud alerts
+
 # Sidebar controls
 st.sidebar.header("⚙️ Controls")
 update_interval = st.sidebar.slider("⏳ Update Interval (seconds)", 1, 10, 2)
 num_transactions = st.sidebar.slider("📊 Number of Transactions to Display", 10, 100, 20)
 
-# 🚨 High-Risk Alerts Section
-st.sidebar.header("🚨 Fraud Alerts")
+# 🚨 Fraud Alerts Section
+st.sidebar.header("🚨 Recent Fraud Alerts")
+fraud_alert_placeholder = st.sidebar.empty()
 
 # Real-time transaction feed
 st.header("📌 Real-Time Transaction Feed")
@@ -83,8 +86,11 @@ fraud_chart_placeholder = st.empty()
 st.header("📈 Transaction Trends")
 trends_chart_placeholder = st.empty()
 
-# Fraud Alerts Placeholder
-fraud_alert_placeholder = st.sidebar.empty()
+# Additional Insights
+st.header("📊 Additional Insights")
+fraud_trend_placeholder = st.empty()
+category_distribution_placeholder = st.empty()
+amount_comparison_placeholder = st.empty()
 
 # Simulate real-time transactions
 while True:
@@ -93,46 +99,70 @@ while True:
     
     if processed_transaction is not None:
         is_fraud = model.predict(processed_transaction)[0]
-        
-        # 🚨 Reduce fraud cases, but highlight them properly
         if is_fraud == 1:
-            is_fraud = np.random.choice([0, 1], p=[0.9, 0.1])  # Reduce fraud cases
+            is_fraud = np.random.choice([0, 1], p=[0.9, 0.1])  
 
         transaction['is_fraud'] = is_fraud
         st.session_state.transactions = pd.concat([st.session_state.transactions, pd.DataFrame([transaction])], ignore_index=True)
-        
+
         if len(st.session_state.transactions) > num_transactions:
             st.session_state.transactions = st.session_state.transactions.iloc[-num_transactions:]
 
-        # 🚨 Display alerts for fraudulent transactions
+        # 🚨 Show alerts for fraudulent transactions
         if is_fraud == 1:
-            fraud_alert_placeholder.warning(f"🚨 HIGH-RISK ALERT: Fraudulent transaction detected!\n💳 User ID: {transaction['user_id']} | Amount: PKR {transaction['transaction_amount']:.2f}")
+            alert_msg = f"🚨 Fraud Alert! User {transaction['user_id']} | Amount: PKR {transaction['transaction_amount']:.2f}"
+            st.session_state.fraud_alerts.insert(0, alert_msg)  # Add to the top
+            if len(st.session_state.fraud_alerts) > 5:
+                st.session_state.fraud_alerts.pop()  # Keep only the last 5
+
+        with fraud_alert_placeholder.container():
+            for alert in st.session_state.fraud_alerts:
+                st.warning(alert)
 
         with placeholder.container():
             st.write("### 🔄 Latest Transactions")
             st.dataframe(st.session_state.transactions.tail(10))
 
-        # Fraud distribution pie chart
+        # 📊 Fraud distribution pie chart
         with fraud_chart_placeholder.container():
-            st.write("### 📊 Fraud Distribution")
-            if not st.session_state.transactions.empty:
-                fraud_counts = st.session_state.transactions['is_fraud'].value_counts()
-                labels = fraud_counts.index.map(lambda x: "Legitimate" if x == 0 else "Fraud").tolist()
-                colors = ['green' if label == "Legitimate" else 'red' for label in labels]
-                
-                fig, ax = plt.subplots()
-                ax.pie(fraud_counts, labels=labels, autopct='%1.1f%%', colors=colors)
-                st.pyplot(fig)
+            fraud_counts = st.session_state.transactions['is_fraud'].value_counts()
+            labels = fraud_counts.index.map(lambda x: "Legitimate" if x == 0 else "Fraud").tolist()
+            colors = ['green' if label == "Legitimate" else 'red' for label in labels]
+            fig, ax = plt.subplots()
+            ax.pie(fraud_counts, labels=labels, autopct='%1.1f%%', colors=colors)
+            st.pyplot(fig)
 
-        # Transaction trend line chart
+        # 📈 Transaction trend line chart
         with trends_chart_placeholder.container():
-            st.write("### 📉 Transaction Trends")
-            if not st.session_state.transactions.empty:
-                fig, ax = plt.subplots()
-                ax.plot(st.session_state.transactions.index, st.session_state.transactions['transaction_amount'], marker='o', label='Transaction Amount')
-                ax.set_xlabel("Transaction Index")
-                ax.set_ylabel("Amount (PKR)")
-                ax.legend()
-                st.pyplot(fig)
+            fig, ax = plt.subplots()
+            ax.plot(st.session_state.transactions.index, st.session_state.transactions['transaction_amount'], marker='o', label='Transaction Amount')
+            ax.set_xlabel("Transaction Index")
+            ax.set_ylabel("Amount (PKR)")
+            ax.legend()
+            st.pyplot(fig)
+
+        # 📉 Fraud trend over time
+        with fraud_trend_placeholder.container():
+            fraud_counts = st.session_state.transactions.groupby(st.session_state.transactions.index)['is_fraud'].sum()
+            fig, ax = plt.subplots()
+            ax.bar(fraud_counts.index, fraud_counts.values, color='red', label="Fraudulent Transactions")
+            ax.set_xlabel("Transaction Index")
+            ax.set_ylabel("Fraud Count")
+            ax.legend()
+            st.pyplot(fig)
+
+        # 🏪 Fraud vs. Legitimate per category
+        with category_distribution_placeholder.container():
+            category_counts = st.session_state.transactions.groupby(['merchant_category', 'is_fraud']).size().unstack(fill_value=0)
+            fig, ax = plt.subplots(figsize=(10, 5))
+            category_counts.plot(kind='bar', stacked=True, ax=ax)
+            st.pyplot(fig)
+
+        # 💰 Average Transaction Amount (Fraud vs. Legitimate)
+        with amount_comparison_placeholder.container():
+            avg_amounts = st.session_state.transactions.groupby('is_fraud')['transaction_amount'].mean()
+            fig, ax = plt.subplots()
+            avg_amounts.plot(kind='bar', color=['green', 'red'], ax=ax)
+            st.pyplot(fig)
 
     time.sleep(update_interval)
